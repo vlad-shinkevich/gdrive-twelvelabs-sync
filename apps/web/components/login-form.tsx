@@ -5,6 +5,7 @@ import { GalleryVerticalEnd } from "lucide-react"
 
 import { cn } from "@workspace/ui/lib/utils"
 import { Button } from "@workspace/ui/components/button"
+import { supabase } from "@/lib/supabase/client"
 
 export function LoginForm({
   className,
@@ -20,21 +21,15 @@ export function LoginForm({
     setError("")
     setLoading(true)
     try {
-      const res = await fetch("/api/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: email, password }),
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
       })
-      if (res.ok) {
+      if (signInError) {
+        setError(signInError.message || "Login failed")
+      } else {
         window.location.href = "/"
         return
-      }
-      const contentType = res.headers.get("content-type") || ""
-      if (contentType.includes("application/json")) {
-        const data = await res.json()
-        setError(data.message || "Login failed")
-      } else {
-        setError("Login failed")
       }
     } catch {
       setError("Network error")
