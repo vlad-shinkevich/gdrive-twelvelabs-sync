@@ -55,32 +55,19 @@ import { Button } from "@workspace/ui/components/button"
 
 ### Authentication
 
-- Login page: `apps/web/app/login/page.tsx` uses `LoginForm` from `apps/web/components/login-form.tsx`.
-- API login: `apps/web/app/api/login/route.ts` checks credentials from env and sets an httpOnly cookie `auth_token`.
-- Middleware: `apps/web/middleware.ts` allows `/login` and all of `/api`, but protects other routes by comparing cookie `auth_token` with `AUTH_TOKEN` from env. If not valid → redirect to `/login`.
+- Login page: `apps/web/app/login/page.tsx` uses `LoginForm` (`apps/web/components/login-form.tsx`) with `supabase.auth.signInWithPassword`.
+- Middleware: `apps/web/middleware.ts` uses `@supabase/ssr` to read Supabase session cookies and redirect unauthenticated users to `/login`. It allows `/login` and all of `/api`.
 
 Environment variables (Vercel → Project → Settings → Environment Variables):
-- `APP_LOGIN_USER`
-- `APP_LOGIN_PASS`
-- `AUTH_TOKEN` (any secure random string; used as cookie value and checked in middleware)
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
 
 Notes:
-- Cookie flags: httpOnly, secure in production, sameSite=strict, path=/.
-- Middleware environment is baked at build time. Changing env in Vercel requires a new deployment to take effect for middleware.
-- Because middleware excludes `/api`, any private API route you add later must validate `auth_token` inside the handler:
-
-```ts
-import { cookies } from "next/headers"
-import { NextResponse } from "next/server"
-
-export async function GET() {
-  const token = cookies().get("auth_token")?.value
-  if (!token || token !== process.env.AUTH_TOKEN) {
-    return NextResponse.json({ message: "Unauthorized" }, { status: 401 })
-  }
-  return NextResponse.json({ ok: true })
-}
-```
+- Supabase Site URL: in dev keep `http://localhost:3000`. For production set your Vercel domain. Add both dev and prod domains to Allowed Redirect URLs and CORS Origins.
+- Because middleware excludes `/api`, any private API you add should validate the Supabase session inside the handler (or remove the exclusion and protect via middleware).
+- Test route: `GET/POST /api/supabase-test` checks DB connectivity (table `todos`).
 
 ### Local development
 
@@ -88,14 +75,24 @@ export async function GET() {
 2) Create `apps/web/.env.local` with:
 
 ```
-APP_LOGIN_USER=your_login
-APP_LOGIN_PASS=your_password
-AUTH_TOKEN=your_secure_random_token
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+SUPABASE_URL=...
+SUPABASE_SERVICE_ROLE_KEY=...
 ```
 
 3) Run: `pnpm dev`
+4) Create a user (dev): via Supabase Studio or Admin API. Example (server-only key):
+
+```
+curl -s -X POST "$SUPABASE_URL/auth/v1/admin/users" \
+  -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+  -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"StrongPass!123","email_confirm":true}'
+```
 
 ### Deployment (Vercel)
 
-- Set the same env vars in Vercel for Production/Preview/Development.
-- Any new deployment (new commit/merge or Redeploy) will pick up updated env. Middleware requires a new deployment to read updated env.
+ - Set the same Supabase env vars in Vercel for Production/Preview/Development.
+ - Any new deployment (new commit/merge or Redeploy) will pick up updated env. Changing Supabase Site URL/Redirects in Supabase does not require a redeploy.
