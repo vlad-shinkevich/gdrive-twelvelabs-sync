@@ -1,0 +1,75 @@
+[
+  {
+    "id": 1,
+    "header": "Executive Summary",
+    "type": "Narrative",
+    "status": "Done",
+    "target": "100%",
+    "limit": "5p",
+    "reviewer": "Eddie Lake"
+  },
+  {
+    "id": 2,
+    "header": "Market Analysis",
+    "type": "Design",
+    "status": "In Progress",
+    "target": "80%",
+    "limit": "10p",
+    "reviewer": "Assign reviewer"
+  },
+  {
+    "id": 3,
+    "header": "Technical Approach",
+    "type": "Technical Approach",
+    "status": "Done",
+    "target": "95%",
+    "limit": "12p",
+    "reviewer": "Emily Whalen"
+  },
+  {
+    "id": 4,
+    "header": "Project Plan",
+    "type": "Table of Contents",
+    "status": "In Progress",
+    "target": "60%",
+    "limit": "8p",
+    "reviewer": "Assign reviewer"
+  },
+  {
+    "id": 5,
+    "header": "Risk Assessment",
+    "type": "Executive Summary",
+    "status": "Not Started",
+    "target": "0%",
+    "limit": "6p",
+    "reviewer": "Assign reviewer"
+  },
+  {
+    "id": 6,
+    "header": "Budget Overview",
+    "type": "Capabilities",
+    "status": "Done",
+    "target": "100%",
+    "limit": "4p",
+    "reviewer": "Jamik Tashpulatov"
+  },
+  {
+    "id": 7,
+    "header": "Key Personnel",
+    "type": "Key Personnel",
+    "status": "In Progress",
+    "target": "50%",
+    "limit": "3p",
+    "reviewer": "Assign reviewer"
+  },
+  {
+    "id": 8,
+    "header": "Appendices",
+    "type": "Focus Documents",
+    "status": "Not Started",
+    "target": "0%",
+    "limit": "10p",
+    "reviewer": "Assign reviewer"
+  }
+]
+
