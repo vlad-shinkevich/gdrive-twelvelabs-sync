@@ -4,7 +4,13 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        ".env*",
+        // Supabase envs used by server client
+        "$SUPABASE_URL",
+        "$SUPABASE_SERVICE_ROLE_KEY"
+      ],
       "outputs": [".next/**", "!.next/cache/**"]
     },
     "lint": {
