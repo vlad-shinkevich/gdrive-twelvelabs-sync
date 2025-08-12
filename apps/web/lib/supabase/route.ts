@@ -17,7 +17,7 @@ export async function createRouteSupabase() {
         cookieStore.set(name, value, options)
       },
       remove(name: string, options: CookieOptions) {
-        cookieStore.delete(name, options)
+        cookieStore.delete({ name, ...options })
       },
     },
   })
