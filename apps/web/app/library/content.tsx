@@ -258,7 +258,7 @@ function AddFolderDialog({ onCreate }: { onCreate: (folder: { id: string; name: 
   const [verifiedFolder, setVerifiedFolder] = useState<{ id: string; name: string } | null>(null)
   const [indexes, setIndexes] = useState<{ id: string; name: string }[] | null>(null)
   const [selectedIndexId, setSelectedIndexId] = useState("")
-  const [loading, setLoading] = useState(false)
+  const [, setLoading] = useState(false)
   const [tlOk, setTlOk] = useState<"idle" | "ok" | "error">("idle")
 
   async function verifyDriveLink(url: string) {

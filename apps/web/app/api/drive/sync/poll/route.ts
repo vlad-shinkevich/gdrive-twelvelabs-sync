@@ -30,7 +30,7 @@ export async function POST(req: Request) {
 
   // Get Google provider token from session first
   const sessionRes = await supa.auth.getSession()
-  let providerToken: string | undefined = sessionRes.data.session?.provider_token
+  let providerToken: string | undefined = sessionRes.data.session?.provider_token ?? undefined
   if (!providerToken) {
     const google = userData.user.identities?.find((i) => i.provider === "google")
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
