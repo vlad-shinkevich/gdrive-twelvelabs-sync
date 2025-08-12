@@ -2,6 +2,23 @@ import { NextResponse } from "next/server"
 import { createRouteSupabase } from "@/lib/supabase/route"
 import { createAdminSupabase } from "@/lib/supabase/server"
 
+type GoogleDriveFile = {
+  id: string
+  name: string
+  mimeType: string
+  parents?: string[]
+  trashed?: boolean
+  size?: string
+  createdTime?: string
+  modifiedTime?: string
+  owners?: Array<{ displayName: string; emailAddress: string }>
+  videoMediaMetadata?: {
+    width?: number
+    height?: number
+    durationMillis?: string
+  }
+}
+
 // Starts an initial tree sync for a Drive folder and stores nodes + a changes cursor
 export async function POST(req: Request) {
   const { syncId, folderId } = await req.json()
@@ -24,10 +41,11 @@ export async function POST(req: Request) {
   // Get Google token
   // Prefer provider_token from session
   const sessionRes = await supa.auth.getSession()
-  let providerToken: string | undefined = (sessionRes.data.session as any)?.provider_token
+  let providerToken: string | undefined = sessionRes.data.session?.provider_token
   if (!providerToken) {
-    const google = (data.user as any).identities?.find((i: any) => i.provider === "google")
-    providerToken = (google as any)?.identity_data?.access_token
+    const google = data.user.identities?.find((i) => i.provider === "google")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    providerToken = (google?.identity_data as any)?.access_token
   }
   if (!providerToken) return NextResponse.json({ error: "Google not linked" }, { status: 403 })
 
@@ -41,27 +59,33 @@ export async function POST(req: Request) {
   const startPageToken = startJson.startPageToken as string
 
   // Fetch root meta and include as a node (include owner/size/created/modified and video metadata)
-  const metaResp = await fetch(`https://www.googleapis.com/drive/v3/files/${folderId}?fields=id,name,mimeType,size,createdTime,modifiedTime,owners(displayName,emailAddress),videoMediaMetadata(width,height,durationMillis)`, {
-    headers: { Authorization: `Bearer ${providerToken}` },
-    cache: "no-store",
-  })
+  const metaResp = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${folderId}?fields=id,name,mimeType,size,createdTime,modifiedTime,owners(displayName,emailAddress),videoMediaMetadata(width,height,durationMillis)`,
+    {
+      headers: { Authorization: `Bearer ${providerToken}` },
+      cache: "no-store",
+    }
+  )
   if (!metaResp.ok) return NextResponse.json({ error: `Failed to get folder meta: ${await metaResp.text()}` }, { status: 500 })
-  const rootMeta = await metaResp.json()
+  const rootMeta = (await metaResp.json()) as GoogleDriveFile
 
-  async function listChildren(id: string): Promise<Array<{ id: string; name: string; mimeType: string }>> {
-    const out: Array<{ id: string; name: string; mimeType: string }> = []
+  async function listChildren(id: string): Promise<GoogleDriveFile[]> {
+    const out: GoogleDriveFile[] = []
     let pageToken: string | undefined
     do {
       const params = new URLSearchParams()
       params.set("q", `'${id}' in parents and trashed = false`)
-      params.set("fields", "files(id,name,mimeType,size,createdTime,modifiedTime,owners(displayName,emailAddress),videoMediaMetadata(width,height,durationMillis)),nextPageToken")
+      params.set(
+        "fields",
+        "files(id,name,mimeType,size,createdTime,modifiedTime,owners(displayName,emailAddress),videoMediaMetadata(width,height,durationMillis)),nextPageToken"
+      )
       if (pageToken) params.set("pageToken", pageToken)
-      const r = await fetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}` , {
+      const r = await fetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`, {
         headers: { Authorization: `Bearer ${providerToken}` },
         cache: "no-store",
       })
       if (!r.ok) throw new Error(`Drive list failed: ${await r.text()}`)
-      const json = (await r.json()) as any
+      const json = (await r.json()) as { files?: GoogleDriveFile[]; nextPageToken?: string }
       out.push(...(json.files || []))
       pageToken = json.nextPageToken
     } while (pageToken)
@@ -69,7 +93,23 @@ export async function POST(req: Request) {
   }
 
   // BFS tree build and store
-  const nodesToInsert: any[] = []
+  type NodeToInsert = {
+    sync_id: string
+    drive_id: string
+    name: string
+    mime_type: string
+    is_folder: boolean
+    parent_drive_id: string | null
+    owner_name: string | null
+    owner_email: string | null
+    size: number | null
+    modified_time: string | null
+    created_time: string | null
+    video_duration_ms: number | null
+    video_width: number | null
+    video_height: number | null
+  }
+  const nodesToInsert: NodeToInsert[] = []
   // Insert root
   nodesToInsert.push({
     sync_id: syncId,
@@ -87,7 +127,7 @@ export async function POST(req: Request) {
     video_width: rootMeta?.videoMediaMetadata?.width ?? null,
     video_height: rootMeta?.videoMediaMetadata?.height ?? null,
   })
-  const queue: Array<{ id: string; name: string; mimeType: string }> = [{ id: folderId, name: rootMeta.name, mimeType: rootMeta.mimeType }]
+  const queue: GoogleDriveFile[] = [rootMeta]
   const visited = new Set<string>()
 
   while (queue.length) {
@@ -96,29 +136,29 @@ export async function POST(req: Request) {
     visited.add(cur.id)
     const children = await listChildren(cur.id)
     for (const ch of children) {
-      const isFolder = (ch as any).mimeType === "application/vnd.google-apps.folder"
+      const isFolder = ch.mimeType === "application/vnd.google-apps.folder"
       nodesToInsert.push({
         sync_id: syncId,
-        drive_id: (ch as any).id,
-        name: (ch as any).name,
-        mime_type: (ch as any).mimeType,
+        drive_id: ch.id,
+        name: ch.name,
+        mime_type: ch.mimeType,
         is_folder: isFolder,
         parent_drive_id: cur.id,
-        owner_name: (ch as any)?.owners?.[0]?.displayName ?? null,
-        owner_email: (ch as any)?.owners?.[0]?.emailAddress ?? null,
-        size: (ch as any)?.size ? Number((ch as any).size) : null,
-        modified_time: (ch as any)?.modifiedTime ? new Date((ch as any).modifiedTime).toISOString() : null,
-        created_time: (ch as any)?.createdTime ? new Date((ch as any).createdTime).toISOString() : null,
-        video_duration_ms: (ch as any)?.videoMediaMetadata?.durationMillis ? Number((ch as any).videoMediaMetadata.durationMillis) : null,
-        video_width: (ch as any)?.videoMediaMetadata?.width ?? null,
-        video_height: (ch as any)?.videoMediaMetadata?.height ?? null,
+        owner_name: ch?.owners?.[0]?.displayName ?? null,
+        owner_email: ch?.owners?.[0]?.emailAddress ?? null,
+        size: ch?.size ? Number(ch.size) : null,
+        modified_time: ch?.modifiedTime ? new Date(ch.modifiedTime).toISOString() : null,
+        created_time: ch?.createdTime ? new Date(ch.createdTime).toISOString() : null,
+        video_duration_ms: ch?.videoMediaMetadata?.durationMillis ? Number(ch.videoMediaMetadata.durationMillis) : null,
+        video_width: ch?.videoMediaMetadata?.width ?? null,
+        video_height: ch?.videoMediaMetadata?.height ?? null,
       })
-      if (isFolder) queue.push(ch as any)
+      if (isFolder) queue.push(ch)
     }
   }
 
   if (nodesToInsert.length) {
-    const { error: insErr } = await admin.from("drive_nodes").upsert(nodesToInsert, { onConflict: "sync_id,drive_id" as any })
+    const { error: insErr } = await admin.from("drive_nodes").upsert(nodesToInsert, { onConflict: "sync_id,drive_id" })
     if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 })
   }
 

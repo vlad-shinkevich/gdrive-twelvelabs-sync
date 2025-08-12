@@ -46,9 +46,9 @@ export function LibraryContent({ data }: { data: DriveNode[] }) {
       try {
         const res = await fetch("/api/syncs", { cache: "no-store" })
         if (!res.ok) return
-        const rows: Array<{ id: string; drive_folder_id: string; drive_folder_name: string }>= await res.json()
+        const rows: Array<{ id: string; drive_folder_id: string; drive_folder_name: string }> = await res.json()
         if (canceled) return
-        setRoots((prev) => {
+        setRoots(() => {
           const mapped: DriveNode[] = rows.map((r) => ({
             id: r.drive_folder_id,
             name: r.drive_folder_name,
@@ -58,9 +58,13 @@ export function LibraryContent({ data }: { data: DriveNode[] }) {
           }))
           return mapped
         })
-      } catch {}
+      } catch (e) {
+        console.error("Failed to fetch syncs", e)
+      }
     })()
-    return () => { canceled = true }
+    return () => {
+      canceled = true
+    }
   }, [])
 
   const visibleData = React.useMemo(() => {
@@ -75,20 +79,28 @@ export function LibraryContent({ data }: { data: DriveNode[] }) {
     ;(async () => {
       try {
         // selectedRoot соответствует drive_folder_id, используем driveId для поиска
-        const res = await fetch(`/api/drive/tree/by-sync?driveId=${encodeURIComponent(selectedRoot)}`, { cache: "no-store" })
+        const res = await fetch(`/api/drive/tree/by-sync?driveId=${encodeURIComponent(selectedRoot)}`, {
+          cache: "no-store",
+        })
         if (!res.ok) return
         const json = await res.json()
         if (!json?.ok || !json?.tree) return
         if (canceled) return
-        setRoots((prev) => prev.map((n) => {
-          if ((n.id ?? n.name) !== selectedRoot) return n
-          const tree = json.tree as DriveNode
-          tree.status = "Synced"
-          return tree
-        }))
-      } catch {}
+        setRoots((prev) =>
+          prev.map((n) => {
+            if ((n.id ?? n.name) !== selectedRoot) return n
+            const tree = json.tree as DriveNode
+            tree.status = "Synced"
+            return tree
+          })
+        )
+      } catch (error) {
+        console.error("Failed to fetch tree:", error)
+      }
     })()
-    return () => { canceled = true }
+    return () => {
+      canceled = true
+    }
   }, [selectedRoot])
 
   // When "All" is selected, ensure each root has its tree loaded (collapsed by default in UI)
@@ -123,22 +135,28 @@ export function LibraryContent({ data }: { data: DriveNode[] }) {
                   const key = tree.id || tree.name
                   if (key) trees[key] = tree
                 }
-              } catch {}
+              } catch (error) {
+                console.error("Failed to parse tree response:", error)
+              }
             }
           }
         }
         if (Object.keys(trees).length) {
-          setRoots((prev) => prev.map((n) => {
-            const key = n.id || n.name
-            if (!key) return n
-            return trees[key] ? trees[key] : n
-          }))
+          setRoots((prev) =>
+            prev.map((n) => {
+              const key = n.id || n.name
+              if (!key) return n
+              return trees[key] ? trees[key] : n
+            })
+          )
         }
       } finally {
         // keep ids marked as loaded to avoid re-fetch loops when roots state updates
       }
     })()
-    return () => { canceled = true }
+    return () => {
+      canceled = true
+    }
   }, [selectedRoot, roots])
 
   return (
@@ -367,7 +385,9 @@ function AddFolderDialog({ onCreate }: { onCreate: (folder: { id: string; name: 
                   })
                 }
               }
-            } catch {}
+            } catch (e) {
+              console.error("Failed to create sync", e)
+            }
             onCreate({ id, name })
           }}
         >
@@ -400,9 +420,13 @@ function SyncSummaryBar({ selectedRoot }: { selectedRoot: string }) {
         const json = await res.json()
         if (!json?.ok) return
         if (!canceled) setItems(json.items)
-      } catch {}
+      } catch (e) {
+        console.error("Failed to fetch summary", e)
+      }
     })()
-    return () => { canceled = true }
+    return () => {
+      canceled = true
+    }
   }, [])
 
   const visible = React.useMemo(() => {

@@ -30,8 +30,8 @@ export async function POST(req: Request) {
     const text = await res.text()
     return NextResponse.json({ error: text || "Failed" }, { status: res.status })
   }
-  const json = await res.json()
-  const data = (json?.data || []).map((d: any) => ({ id: d._id, index_name: d.index_name }))
+  const json = (await res.json()) as { data: Array<{ _id: string; index_name: string }> }
+  const data = (json?.data || []).map((d) => ({ id: d._id, index_name: d.index_name }))
   return NextResponse.json(data)
 }
 

@@ -3,6 +3,23 @@ import { createRouteSupabase } from "@/lib/supabase/route"
 
 type SyncRow = { id: string; drive_folder_id: string }
 
+type GoogleDriveFile = {
+  id: string
+  name: string
+  mimeType: string
+  parents?: string[]
+  trashed?: boolean
+  size?: string
+  createdTime?: string
+  modifiedTime?: string
+  owners?: Array<{ displayName: string; emailAddress: string }>
+  videoMediaMetadata?: {
+    width?: number
+    height?: number
+    durationMillis?: string
+  }
+}
+
 export async function POST(req: Request) {
   const supa = await createRouteSupabase()
   const { data: userData } = await supa.auth.getUser()
@@ -13,10 +30,11 @@ export async function POST(req: Request) {
 
   // Get Google provider token from session first
   const sessionRes = await supa.auth.getSession()
-  let providerToken: string | undefined = (sessionRes.data.session as any)?.provider_token
+  let providerToken: string | undefined = sessionRes.data.session?.provider_token
   if (!providerToken) {
-    const google = (userData.user as any).identities?.find((i: any) => i.provider === "google")
-    providerToken = (google as any)?.identity_data?.access_token
+    const google = userData.user.identities?.find((i) => i.provider === "google")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    providerToken = (google?.identity_data as any)?.access_token
   }
   if (!providerToken) return NextResponse.json({ error: "Google not linked" }, { status: 403 })
 
@@ -82,7 +100,7 @@ export async function POST(req: Request) {
         cache: "no-store",
       })
       if (!resp.ok) {
-        const txt = await resp.text()
+        await resp.text()
         // Stop on 403/429 and return partial results
         break
       }
@@ -90,7 +108,7 @@ export async function POST(req: Request) {
       const changes = (json.changes || []) as Array<{
         fileId: string
         removed?: boolean
-        file?: { id: string; name: string; mimeType: string; parents?: string[]; trashed?: boolean }
+        file?: GoogleDriveFile
       }>
 
       for (const ch of changes) {
@@ -118,7 +136,7 @@ export async function POST(req: Request) {
             .eq("sync_id", sync.id)
             .in("drive_id", parents)
             .limit(1)
-          if (parentRow && parentRow.length > 0) parentId = parentRow[0].drive_id
+          if (parentRow && parentRow[0]) parentId = parentRow[0].drive_id
         }
 
         // If parent unknown and это не корень синка — пропускаем (не относится к нашему поддереву)
@@ -136,14 +154,16 @@ export async function POST(req: Request) {
               parent_drive_id: parentId,
               owner_name: ch.file.owners?.[0]?.displayName || null,
               owner_email: ch.file.owners?.[0]?.emailAddress || null,
-              size: (ch.file as any).size ? Number((ch.file as any).size) : null,
-              modified_time: (ch.file as any).modifiedTime ? new Date((ch.file as any).modifiedTime).toISOString() : null,
-              created_time: (ch.file as any).createdTime ? new Date((ch.file as any).createdTime).toISOString() : null,
-              video_duration_ms: (ch.file as any)?.videoMediaMetadata?.durationMillis ? Number((ch.file as any).videoMediaMetadata.durationMillis) : null,
-              video_width: (ch.file as any)?.videoMediaMetadata?.width ?? null,
-              video_height: (ch.file as any)?.videoMediaMetadata?.height ?? null,
+              size: ch.file.size ? Number(ch.file.size) : null,
+              modified_time: ch.file.modifiedTime ? new Date(ch.file.modifiedTime).toISOString() : null,
+              created_time: ch.file.createdTime ? new Date(ch.file.createdTime).toISOString() : null,
+              video_duration_ms: ch.file.videoMediaMetadata?.durationMillis
+                ? Number(ch.file.videoMediaMetadata.durationMillis)
+                : null,
+              video_width: ch.file.videoMediaMetadata?.width ?? null,
+              video_height: ch.file.videoMediaMetadata?.height ?? null,
             },
-            { onConflict: "sync_id,drive_id" as any }
+            { onConflict: "sync_id,drive_id" }
           )
         processed++
       }

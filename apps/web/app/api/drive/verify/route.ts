@@ -8,7 +8,9 @@ function extractFolderIdFromUrl(url: string): string | null {
     if (idFromPath) return idFromPath
     const idFromQuery = u.searchParams.get("id")
     if (idFromQuery) return idFromQuery
-  } catch {}
+  } catch {
+    // ignore invalid URLs
+  }
   return null
 }
 
@@ -23,14 +25,14 @@ export async function POST(req: Request) {
     const supabase = await createRouteSupabase()
     // Prefer provider_token from session (most reliable)
     const sessionRes = await supabase.auth.getSession()
-    const providerToken = (sessionRes.data.session as any)?.provider_token
-      || (sessionRes.data.session as any)?.provider_token
+    const providerToken = sessionRes.data.session?.provider_token
     // Fallback to identities if session token missing
-    let tokenToUse: string | undefined = providerToken
+    let tokenToUse: string | undefined = providerToken ?? undefined
     if (!tokenToUse) {
       const { data } = await supabase.auth.getUser()
-      const google = data.user?.identities?.find((i: any) => i.provider === "google")
-      tokenToUse = (google as any)?.identity_data?.access_token
+      const google = data.user?.identities?.find((i) => i.provider === "google")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      tokenToUse = (google?.identity_data as any)?.access_token
     }
     if (!tokenToUse) {
       return NextResponse.json({ ok: false, folderId, name: "Google Drive Folder" })
@@ -40,11 +42,13 @@ export async function POST(req: Request) {
       headers: { Authorization: `Bearer ${tokenToUse}` },
     })
     if (resp.ok) {
-      const meta = await resp.json()
+      const meta = (await resp.json()) as { name?: string }
       return NextResponse.json({ ok: true, folderId, name: meta.name || "Google Drive Folder" })
     }
     return NextResponse.json({ ok: false, folderId, name: "Google Drive Folder" }, { status: 200 })
-  } catch {}
+  } catch {
+    // ignore errors
+  }
 
   // Fallback: unable to verify
   return NextResponse.json({ ok: false, folderId, name: "Google Drive Folder" })

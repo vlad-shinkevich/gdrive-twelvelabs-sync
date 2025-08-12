@@ -10,40 +10,47 @@ type DriveNode = {
   subRows?: DriveNode[]
 }
 
+type GoogleDriveFile = {
+  id: string
+  name: string
+  mimeType: string
+}
+
 export async function POST(req: Request) {
   const { folderId } = (await req.json()) as { folderId?: string }
   if (!folderId) return NextResponse.json({ error: "Missing folderId" }, { status: 400 })
 
-  const supabase = createRouteSupabase()
+  const supabase = await createRouteSupabase()
   const { data } = await supabase.auth.getUser()
   if (!data.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  const google = (data.user as any).identities?.find((i: any) => i.provider === "google")
-  const providerToken = (google as any)?.identity_data?.access_token
+  const google = data.user.identities?.find((i: { provider: string }) => i.provider === "google")
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const providerToken = (google?.identity_data as any)?.access_token
   if (!providerToken) return NextResponse.json({ error: "Google not linked" }, { status: 403 })
 
-  async function getMeta(id: string): Promise<{ id: string; name: string; mimeType: string }> {
+  async function getMeta(id: string): Promise<GoogleDriveFile> {
     const r = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?fields=id,name,mimeType`, {
       headers: { Authorization: `Bearer ${providerToken}` },
       cache: "no-store",
     })
     if (!r.ok) throw new Error(`Drive meta failed: ${await r.text()}`)
-    return (await r.json()) as any
+    return (await r.json()) as GoogleDriveFile
   }
 
-  async function listChildren(id: string): Promise<Array<{ id: string; name: string; mimeType: string }>> {
-    const out: Array<{ id: string; name: string; mimeType: string }> = []
+  async function listChildren(id: string): Promise<GoogleDriveFile[]> {
+    const out: GoogleDriveFile[] = []
     let pageToken: string | undefined
     do {
       const params = new URLSearchParams()
       params.set("q", `'${id}' in parents and trashed = false`)
       params.set("fields", "files(id,name,mimeType),nextPageToken")
       if (pageToken) params.set("pageToken", pageToken)
-      const r = await fetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}` , {
+      const r = await fetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`, {
         headers: { Authorization: `Bearer ${providerToken}` },
         cache: "no-store",
       })
       if (!r.ok) throw new Error(`Drive list failed: ${await r.text()}`)
-      const json = (await r.json()) as any
+      const json = (await r.json()) as { files?: GoogleDriveFile[]; nextPageToken?: string }
       out.push(...(json.files || []))
       pageToken = json.nextPageToken
     } while (pageToken)
@@ -54,7 +61,7 @@ export async function POST(req: Request) {
   const root: DriveNode = {
     id: rootMeta.id,
     name: rootMeta.name,
-    type: (rootMeta.mimeType === "application/vnd.google-apps.folder" ? "folder" : "file") as any,
+    type: rootMeta.mimeType === "application/vnd.google-apps.folder" ? "folder" : "file",
     mimeType: rootMeta.mimeType,
     status: "Synced",
     subRows: [],
