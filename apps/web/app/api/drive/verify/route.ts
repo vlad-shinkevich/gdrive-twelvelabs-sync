@@ -31,27 +31,40 @@ export async function POST(req: Request) {
     if (!tokenToUse) {
       const { data } = await supabase.auth.getUser()
       const google = data.user?.identities?.find((i) => i.provider === "google")
+      // Supabase stores Google OAuth token in identity_data.access_token
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      tokenToUse = (google as any)?.provider_token
+      tokenToUse = (google?.identity_data as any)?.access_token
     }
     if (!tokenToUse) {
-      return NextResponse.json({ ok: false, folderId, name: "Google Drive Folder" })
+      return NextResponse.json({ ok: false, folderId, name: "Google Drive Folder", reason: "no_google_token" })
     }
     const params = new URLSearchParams({ fields: "id,name,kind" })
     const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${folderId}?${params.toString()}`, {
       headers: { Authorization: `Bearer ${tokenToUse}` },
+      cache: "no-store",
     })
     if (resp.ok) {
       const meta = (await resp.json()) as { name?: string }
       return NextResponse.json({ ok: true, folderId, name: meta.name || "Google Drive Folder" })
     }
-    return NextResponse.json({ ok: false, folderId, name: "Google Drive Folder" }, { status: 200 })
-  } catch {
+    const text = await resp.text().catch(() => "")
+    return NextResponse.json(
+      {
+        ok: false,
+        folderId,
+        name: "Google Drive Folder",
+        reason: "google_resp_not_ok",
+        googleStatus: resp.status,
+        googleText: text,
+      },
+      { status: 200 }
+    )
+  } catch (e) {
     // ignore errors
   }
 
   // Fallback: unable to verify
-  return NextResponse.json({ ok: false, folderId, name: "Google Drive Folder" })
+  return NextResponse.json({ ok: false, folderId, name: "Google Drive Folder", reason: "unknown_error" })
 }
 
 
