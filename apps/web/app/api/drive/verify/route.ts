@@ -15,7 +15,7 @@ function extractFolderIdFromUrl(url: string): string | null {
 }
 
 export async function POST(req: Request) {
-  const { url } = await req.json()
+  const { url, providerToken: providedToken } = (await req.json()) as { url?: string; providerToken?: string }
   if (!url) return NextResponse.json({ error: "Missing url" }, { status: 400 })
   const folderId = extractFolderIdFromUrl(url)
   if (!folderId) return NextResponse.json({ error: "Invalid link" }, { status: 400 })
@@ -23,11 +23,11 @@ export async function POST(req: Request) {
   // Try fetch Google identity access token from Supabase session
   try {
     const supabase = await createRouteSupabase()
-    // Prefer provider_token from session (most reliable)
+    // Prefer provider_token from request body, then from session
     const sessionRes = await supabase.auth.getSession()
-    const providerToken = sessionRes.data.session?.provider_token
+    const sessionToken = sessionRes.data.session?.provider_token
+    let tokenToUse: string | undefined = providedToken ?? sessionToken ?? undefined
     // Fallback to identities if session token missing
-    let tokenToUse: string | undefined = providerToken ?? undefined
     if (!tokenToUse) {
       const { data } = await supabase.auth.getUser()
       const google = data.user?.identities?.find((i) => i.provider === "google")
