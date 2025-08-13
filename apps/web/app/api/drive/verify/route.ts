@@ -32,7 +32,7 @@ export async function POST(req: Request) {
       const { data } = await supabase.auth.getUser()
       const google = data.user?.identities?.find((i) => i.provider === "google")
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      tokenToUse = (google?.identity_data as any)?.access_token
+      tokenToUse = (google as any)?.provider_token
     }
     if (!tokenToUse) {
       return NextResponse.json({ ok: false, folderId, name: "Google Drive Folder" })
